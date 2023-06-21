@@ -38,3 +38,5 @@ class DBs:
     identity: DB
     input: DB
     workspace: DB
+    meta: DB
+    cache: DB

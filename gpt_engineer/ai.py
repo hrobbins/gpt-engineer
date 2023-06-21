@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 
 import openai
@@ -8,8 +10,9 @@ logger = logging.getLogger(__name__)
 
 
 class AI:
-    def __init__(self, model="gpt-4", temperature=0.1):
+    def __init__(self, model="gpt-4", temperature=0.0, cache=None):
         self.temperature = temperature
+        self.cachedb = cache
 
         try:
             openai.Model.retrieve(model)
@@ -39,25 +42,61 @@ class AI:
     def fassistant(self, msg):
         return {"role": "assistant", "content": msg}
 
-    def next(self, messages: list[dict[str, str]], prompt=None):
+    # caching results from server (assuming temperature = 0)
+    def hash_messages(self, messages):
+        h = hashlib.sha256()
+        for m in messages:
+            h.update(str(m).encode())
+        # include the model/source in the hashkey
+        h.update(str(self.model).encode())
+        return h.hexdigest()
+
+    def from_cache(self, messages):
+        results = None
+        h = self.hash_messages(messages)
+        try:
+            results = self.cachedb[h]
+        except Exception:
+            pass
+        # combine messages into hash
+        return results
+
+    def to_cache(self, messages, results):
+        h = self.hash_messages(messages)
+        json_dump = json.dumps(messages, indent=2)
+        self.cachedb[h + ".prompt"] = json_dump
+        self.cachedb[h] = results
+
+    def next(self, messages: list[dict[str, str]], prompt=None, cache=None):
         if prompt:
             messages += [{"role": "user", "content": prompt}]
 
-        logger.debug(f"Creating a new chat completion: {messages}")
-        response = openai.ChatCompletion.create(
-            messages=messages,
-            stream=True,
-            model=self.model,
-            temperature=self.temperature,
-        )
+        content = None
+        if self.cachedb:
+            content = self.from_cache(messages)
 
-        chat = []
-        for chunk in response:
-            delta = chunk["choices"][0]["delta"]
-            msg = delta.get("content", "")
-            print(msg, end="")
-            chat.append(msg)
+        if not content:
+            logger.debug(f"Creating a new chat completion: {messages}")
+            response = openai.ChatCompletion.create(
+                messages=messages,
+                stream=True,
+                model=self.model,
+                temperature=self.temperature,
+            )
+
+            chat = []
+            for chunk in response:
+                delta = chunk["choices"][0]["delta"]
+                msg = delta.get("content", "")
+                print(msg, end="")
+                chat.append(msg)
+
+            content = "".join(chat)
+
+            if self.cachedb:
+                chat = self.to_cache(messages, content)
+
         print()
-        messages += [{"role": "assistant", "content": "".join(chat)}]
+        messages += [{"role": "assistant", "content": content}]
         logger.debug(f"Chat completion finished: {messages}")
         return messages

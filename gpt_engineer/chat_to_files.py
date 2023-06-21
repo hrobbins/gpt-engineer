@@ -9,9 +9,9 @@ def parse_chat(chat):  # -> List[Tuple[str, str]]:
     files = []
     for match in matches:
         # Strip the filename of any non-allowed characters and convert / to \
-        
+
         path = match.group(1)
-        path = re.sub(r'[<>\"\|\?\*\[\]\`\']', "", path)
+        path = re.sub(r"[<>\"\|\?\*\[\]\`\']", "", path)
 
         # Remove leading and trailing brackets
         path = re.sub(r"^\[(.*)\]$", r"\1", path)

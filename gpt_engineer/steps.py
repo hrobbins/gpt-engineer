@@ -1,16 +1,18 @@
 import json
+import logging
+import os
 import re
 import subprocess
 
 from enum import Enum
 
-#from gpt_engineer.ai import AI
-#from gpt_engineer.chat_to_files import to_files
-#from gpt_engineer.db import DBs
-
+# from gpt_engineer.ai import AI
+# from gpt_engineer.chat_to_files import to_files
+# from gpt_engineer.db import DBs
 from ai import AI
 from chat_to_files import to_files
 from db import DBs
+
 
 def setup_sys_prompt(dbs):
     return dbs.identity["generate"] + "\nUseful to know:\n" + dbs.identity["philosophy"]
@@ -214,6 +216,44 @@ def fix_code(ai: AI, dbs: DBs):
     return messages
 
 
+def analyze_(ai: AI, dbs: DBs, directory):
+    # for each file in directory d
+    for filename in os.listdir(directory):
+        f = os.path.join(directory, filename)
+        # checking if it is a file
+        if os.path.isfile(f):
+            # if f.isfile():
+            logging.debug("Analyzing File: " + str(f))
+            code_output = ""
+            with open(f, "r") as file:
+                code_output = file.read()  # .replace('\n', '')
+                file.close()
+                logging.debug("Analyzing Code: " + str(code_output))
+            # code_ouput = json.loads(f)
+            messages = [
+                # ai.fsystem(setup_sys_prompt(dbs)),
+                ai.fsystem(f"{dbs.identity['analysis']}"),
+                ai.fuser(code_output),
+            ]
+            ai.next(messages)
+            # break
+        elif os.path.isdir(f) and f not in ["node_modules"]:
+            # analyze_(ai, dbs, os.path.join(directory,f) )
+            pass
+
+    # TODO: Do analysis across all generated specs for the directory
+
+
+def analyze(ai: AI, dbs: DBs):
+    # given a repository, or directory, generate specs from the code
+    # ... that can then be use to generate another (better) version,
+    # based on modified specs
+    # rps = dbs.meta['reference_projects']
+    rps = [dbs.meta["input_path"]]  # + dbs.meta['reference_projects']
+    for rp in rps:
+        analyze_(ai, dbs, rp)
+
+
 class Config(str, Enum):
     DEFAULT = "default"
     BENCHMARK = "benchmark"
@@ -224,6 +264,7 @@ class Config(str, Enum):
     RESPEC = "respec"
     EXECUTE_ONLY = "execute_only"
     USE_FEEDBACK = "use_feedback"
+    ANALYZE = "analyze"
 
 
 # Different configs of what steps to run
@@ -267,6 +308,7 @@ STEPS = {
     ],
     Config.USE_FEEDBACK: [use_feedback, gen_entrypoint, execute_entrypoint],
     Config.EXECUTE_ONLY: [gen_entrypoint, execute_entrypoint],
+    Config.ANALYZE: [analyze],
 }
 
 # Future steps that can be added:

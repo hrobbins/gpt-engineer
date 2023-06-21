@@ -5,14 +5,13 @@ import shutil
 
 from pathlib import Path
 
+# from gpt_engineer import steps
+# from gpt_engineer.ai import AI
+# from gpt_engineer.db import DB, DBs
+# from gpt_engineer.steps import STEPS
+import steps
 import typer
 
-#from gpt_engineer import steps
-#from gpt_engineer.ai import AI
-#from gpt_engineer.db import DB, DBs
-#from gpt_engineer.steps import STEPS
-
-import steps
 from ai import AI
 from db import DB, DBs
 from steps import STEPS
@@ -24,8 +23,10 @@ app = typer.Typer()
 def main(
     project_path: str = typer.Argument("example", help="path"),
     delete_existing: bool = typer.Argument(False, help="delete existing files"),
-    model: str = "gpt-4",
-    temperature: float = typer.Option(0.0, "--temperature", "-t", help="use 0.1 to add some variability"),
+    model: str = "gpt-3.5-turbo",
+    temperature: float = typer.Option(
+        0.0, "--temperature", "-t", help="use 0.1 to add some variability"
+    ),
     steps_config: steps.Config = typer.Option(
         steps.Config.DEFAULT, "--steps", "-s", help="decide which steps to run"
     ),
@@ -36,6 +37,9 @@ def main(
             "run prefix, if you want to run multiple variants of the same project and "
             "later compare them"
         ),
+    ),
+    reference_projects: str = typer.Option(
+        None, help=("Analyze these projects for reference")
     ),
 ):
     logging.basicConfig(level=logging.DEBUG if verbose else logging.INFO)
@@ -49,10 +53,8 @@ def main(
         shutil.rmtree(memory_path, ignore_errors=True)
         shutil.rmtree(workspace_path, ignore_errors=True)
 
-    ai = AI(
-        model=model,
-        temperature=temperature,
-    )
+    meta_path = memory_path / "meta"
+    cache_path = memory_path / "cache"
 
     dbs = DBs(
         memory=DB(memory_path),
@@ -60,7 +62,16 @@ def main(
         input=DB(input_path),
         workspace=DB(workspace_path),
         identity=DB(Path(os.path.curdir) / "identity"),
+        meta=DB(meta_path),
+        cache=DB(cache_path),
     )
+
+    ai = AI(model=model, temperature=temperature, cache=dbs.cache)
+
+    # store this for the particular project incase we need to override it later
+    # dbs.meta[identity] = dbs.identity
+    dbs.meta["project_path"] = project_path
+    dbs.meta["input_path"] = str(input_path.absolute())
 
     for step in STEPS[steps_config]:
         messages = step(ai, dbs)
